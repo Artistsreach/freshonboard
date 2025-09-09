@@ -1,0 +1,8 @@
+{
+  "projects": {
+    "default": "fresh25",
+    "staging": "fresh25"
+  },
+  "targets": {},
+  "etags": {}
+}
