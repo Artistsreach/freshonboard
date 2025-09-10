@@ -86,6 +86,12 @@ export default function Desktop() {
   const [sourceCleared, setSourceCleared] = useState(false);
   // Workspaces modal state
   const [isWorkspaceModalOpen, setIsWorkspaceModalOpen] = useState(false);
+  const [currentTheme, setCurrentTheme] = useState({
+    id: 'macOS',
+    name: 'macOS',
+    colors: ['#f5f5f7', '#1d1d1f'],
+    icon: '🍎'
+  });
 
   // Detect mobile and compute adjusted position shifted left by 250px on mobile
   useEffect(() => {
@@ -519,6 +525,17 @@ export default function Desktop() {
   useEffect(() => {
     // Auto-play YouTube video on page load
     setYoutubePlayerId('p655dmg8eYs');
+  }, []);
+
+  // Listen for theme changes from WorkspaceOnboardingForm
+  useEffect(() => {
+    const handleThemeChange = (event) => {
+      const { theme } = event.detail;
+      setCurrentTheme(theme);
+    };
+    
+    window.addEventListener('desktop-theme-change', handleThemeChange);
+    return () => window.removeEventListener('desktop-theme-change', handleThemeChange);
   }, []);
 
   useEffect(() => {
@@ -1167,7 +1184,8 @@ export default function Desktop() {
         type: 'app',
         is_shortcut: true,
         position_x: 545,
-        position_y: 150
+        position_y: 150,
+        style: { borderRadius: '18px' }
       });
     }
 
@@ -1774,13 +1792,87 @@ const handleDropOnTrash = async (file) => {
   }
 };
 
+  const getThemeStyles = () => {
+    switch (currentTheme.id) {
+      case 'macOS':
+        return {
+          background: 'linear-gradient(135deg, #f5f5f7 0%, #e8e8ea 100%)',
+          windowBg: 'rgba(255, 255, 255, 0.8)',
+          windowBorder: 'rgba(0, 0, 0, 0.1)',
+          textColor: '#1d1d1f',
+          accentColor: '#007aff'
+        };
+      case 'windows11':
+        return {
+          background: 'linear-gradient(135deg, #0078d4 0%, #ffffff 100%)',
+          windowBg: 'rgba(255, 255, 255, 0.9)',
+          windowBorder: 'rgba(0, 120, 212, 0.2)',
+          textColor: '#323130',
+          accentColor: '#0078d4'
+        };
+      case 'ubuntu':
+        return {
+          background: 'linear-gradient(135deg, #e95420 0%, #2c001e 100%)',
+          windowBg: 'rgba(44, 0, 30, 0.8)',
+          windowBorder: 'rgba(233, 84, 32, 0.3)',
+          textColor: '#ffffff',
+          accentColor: '#e95420'
+        };
+      case 'cyberpunk':
+        return {
+          background: 'linear-gradient(135deg, #ff0080 0%, #00ff80 50%, #0080ff 100%)',
+          windowBg: 'rgba(0, 0, 0, 0.8)',
+          windowBorder: 'rgba(255, 0, 128, 0.5)',
+          textColor: '#ffffff',
+          accentColor: '#ff0080'
+        };
+      case 'ocean':
+        return {
+          background: 'linear-gradient(135deg, #006994 0%, #87ceeb 100%)',
+          windowBg: 'rgba(135, 206, 235, 0.2)',
+          windowBorder: 'rgba(0, 105, 148, 0.3)',
+          textColor: '#003d5c',
+          accentColor: '#006994'
+        };
+      case 'forest':
+        return {
+          background: 'linear-gradient(135deg, #228b22 0%, #90ee90 100%)',
+          windowBg: 'rgba(144, 238, 144, 0.2)',
+          windowBorder: 'rgba(34, 139, 34, 0.3)',
+          textColor: '#0f4f0f',
+          accentColor: '#228b22'
+        };
+      case 'sunset':
+        return {
+          background: 'linear-gradient(135deg, #ff6347 0%, #ffd700 100%)',
+          windowBg: 'rgba(255, 215, 0, 0.2)',
+          windowBorder: 'rgba(255, 99, 71, 0.3)',
+          textColor: '#8b4513',
+          accentColor: '#ff6347'
+        };
+      default:
+        return {
+          background: 'linear-gradient(135deg, #f5f5f7 0%, #e8e8ea 100%)',
+          windowBg: 'rgba(255, 255, 255, 0.8)',
+          windowBorder: 'rgba(0, 0, 0, 0.1)',
+          textColor: '#1d1d1f',
+          accentColor: '#007aff'
+        };
+    }
+  };
+
+  const themeStyles = getThemeStyles();
+
 return (
   <div
-    className={`relative dot-grid ${
-      theme === 'light' ? 'bg-[#ededed]' : 'bg-[#0a0a0a]'
-    }`}
+    className="relative dot-grid"
     ref={desktopRef}
-    style={{ width: '100%', height: canvasSize.height }}
+    style={{ 
+      width: '100%', 
+      height: canvasSize.height,
+      background: themeStyles.background,
+      color: themeStyles.textColor
+    }}
     onMouseDown={(e) => {
       if (isDrawingMode) return;
       if (e.target === e.currentTarget) {
@@ -2109,53 +2201,6 @@ return (
                         windowId={window.id}
                         title={window.title}
                         videoUrl={window.videoUrl}
-                      />
-                    );
-                  }
-                if (window.type === 'notepad') {
-                  return (
-                      <NotepadWindow
-                        key={window.id}
-                        isOpen={!minimizedWindows.includes(window.id)}
-                        onClose={() => closeWindow(window.id)}
-                        zIndex={window.zIndex}
-                        position={window.position}
-                        content={window.content}
-                        title="Notepad"
-                        onClick={() => bringToFront(window.id)}
-                        windowId={window.id}
-                        defaultEditing={window.defaultEditing}
-                      />
-                    );
-                  }
-                  if (window.type === 'tasks') {
-                    return (
-                        <TasksWindow
-                          key={window.id}
-                          isOpen={!minimizedWindows.includes(window.id)}
-                          onClose={() => closeWindow(window.id)}
-                          zIndex={window.zIndex}
-                          position={window.position}
-                          onClick={() => bringToFront(window.id)}
-                          windowId={window.id}
-                        />
-                      );
-                    }
-                    if (window.type === 'chart') {
-                      return (
-                          <ChartWindow
-                            key={window.id}
-                            isOpen={!minimizedWindows.includes(window.id)}
-                            onClose={() => closeWindow(window.id)}
-                            onMinimize={() => minimizeWindow(window.id)}
-                            onMaximize={() => maximizeWindow(window.id)}
-                            isMaximized={window.isMaximized}
-                            zIndex={window.zIndex}
-                            position={window.position}
-                            onClick={() => bringToFront(window.id)}
-                            windowId={window.id}
-                            title={window.title}
-                            config={window.config}
                           />
                         );
                       }
@@ -2216,6 +2261,10 @@ return (
           videoId={youtubePlayerId}
           onClose={() => setYoutubePlayerId(null)}
           zIndex={windowZIndex + 1}
+          position={{
+            top: adjustedNextWindowPosition?.top,
+            left: (adjustedNextWindowPosition?.left || 0) + 570,
+          }}
         />
         <Dock onClick={handleAppClick} onDrop={handleDropFromDock} ref={dockRef} customApps={dockCustomApps} />
         {/* Trash Bin (toggle from StatusBar menu) */}

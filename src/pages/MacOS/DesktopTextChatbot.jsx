@@ -43,6 +43,12 @@ export default function DesktopTextChatbot({ embedded = false }) {
   const modelFinalizeTimer = useRef(null);
   const [streaming, setStreaming] = useState(false);
   const modelBufferRef = useRef('');
+  const [currentTheme, setCurrentTheme] = useState({
+    id: 'macOS',
+    name: 'macOS',
+    colors: ['#f5f5f7', '#1d1d1f'],
+    icon: '🍎'
+  });
 
   const openai = useMemo(() => new OpenAI({
     baseURL: 'https://openrouter.ai/api/v1',
@@ -208,6 +214,17 @@ export default function DesktopTextChatbot({ embedded = false }) {
     return () => window.removeEventListener('gemini-live-status', statusHandler);
   }, []);
 
+  // Listen for theme changes from WorkspaceOnboardingForm
+  useEffect(() => {
+    const handleThemeChange = (event) => {
+      const { theme } = event.detail;
+      setCurrentTheme(theme);
+    };
+    
+    window.addEventListener('desktop-theme-change', handleThemeChange);
+    return () => window.removeEventListener('desktop-theme-change', handleThemeChange);
+  }, []);
+
   // Function to execute tool calls and open shortcut windows
   const executeToolCall = useCallback(async (toolCall) => {
     const { name, arguments: args } = toolCall.function;
@@ -336,6 +353,101 @@ export default function DesktopTextChatbot({ embedded = false }) {
     }
   };
 
+  const getThemeStyles = () => {
+    switch (currentTheme.id) {
+      case 'macOS':
+        return {
+          buttonBg: '#007aff',
+          buttonHover: '#0056cc',
+          panelBg: 'rgba(255, 255, 255, 0.95)',
+          panelBorder: 'rgba(0, 0, 0, 0.1)',
+          textColor: '#1d1d1f',
+          inputBg: 'rgba(255, 255, 255, 0.8)',
+          inputBorder: 'rgba(0, 0, 0, 0.2)',
+          messageBg: 'rgba(240, 240, 240, 0.8)'
+        };
+      case 'windows11':
+        return {
+          buttonBg: '#0078d4',
+          buttonHover: '#106ebe',
+          panelBg: 'rgba(255, 255, 255, 0.95)',
+          panelBorder: 'rgba(0, 120, 212, 0.2)',
+          textColor: '#323130',
+          inputBg: 'rgba(255, 255, 255, 0.9)',
+          inputBorder: 'rgba(0, 120, 212, 0.3)',
+          messageBg: 'rgba(243, 242, 241, 0.8)'
+        };
+      case 'ubuntu':
+        return {
+          buttonBg: '#e95420',
+          buttonHover: '#d44414',
+          panelBg: 'rgba(44, 0, 30, 0.95)',
+          panelBorder: 'rgba(233, 84, 32, 0.3)',
+          textColor: '#ffffff',
+          inputBg: 'rgba(44, 0, 30, 0.8)',
+          inputBorder: 'rgba(233, 84, 32, 0.4)',
+          messageBg: 'rgba(233, 84, 32, 0.2)'
+        };
+      case 'cyberpunk':
+        return {
+          buttonBg: '#ff0080',
+          buttonHover: '#e6006b',
+          panelBg: 'rgba(0, 0, 0, 0.95)',
+          panelBorder: 'rgba(255, 0, 128, 0.5)',
+          textColor: '#ffffff',
+          inputBg: 'rgba(0, 0, 0, 0.8)',
+          inputBorder: 'rgba(255, 0, 128, 0.6)',
+          messageBg: 'rgba(255, 0, 128, 0.2)'
+        };
+      case 'ocean':
+        return {
+          buttonBg: '#006994',
+          buttonHover: '#005577',
+          panelBg: 'rgba(135, 206, 235, 0.95)',
+          panelBorder: 'rgba(0, 105, 148, 0.3)',
+          textColor: '#000000',
+          inputBg: 'rgba(135, 206, 235, 0.7)',
+          inputBorder: 'rgba(0, 105, 148, 0.4)',
+          messageBg: 'rgba(0, 105, 148, 0.2)'
+        };
+      case 'forest':
+        return {
+          buttonBg: '#228b22',
+          buttonHover: '#1e7a1e',
+          panelBg: 'rgba(144, 238, 144, 0.95)',
+          panelBorder: 'rgba(34, 139, 34, 0.3)',
+          textColor: '#000000',
+          inputBg: 'rgba(144, 238, 144, 0.7)',
+          inputBorder: 'rgba(34, 139, 34, 0.4)',
+          messageBg: 'rgba(34, 139, 34, 0.2)'
+        };
+      case 'sunset':
+        return {
+          buttonBg: '#ff6347',
+          buttonHover: '#e55a42',
+          panelBg: 'rgba(255, 215, 0, 0.95)',
+          panelBorder: 'rgba(255, 99, 71, 0.3)',
+          textColor: '#8b4513',
+          inputBg: 'rgba(255, 215, 0, 0.7)',
+          inputBorder: 'rgba(255, 99, 71, 0.4)',
+          messageBg: 'rgba(255, 99, 71, 0.2)'
+        };
+      default:
+        return {
+          buttonBg: '#007aff',
+          buttonHover: '#0056cc',
+          panelBg: 'rgba(255, 255, 255, 0.95)',
+          panelBorder: 'rgba(0, 0, 0, 0.1)',
+          textColor: '#1d1d1f',
+          inputBg: 'rgba(255, 255, 255, 0.8)',
+          inputBorder: 'rgba(0, 0, 0, 0.2)',
+          messageBg: 'rgba(240, 240, 240, 0.8)'
+        };
+    }
+  };
+
+  const themeStyles = getThemeStyles();
+
   const buttonPosition = embedded
     ? 'absolute bottom-4 right-4 z-[45]'
     : 'fixed bottom-6 right-6 z-[1000]';
@@ -349,7 +461,16 @@ export default function DesktopTextChatbot({ embedded = false }) {
       {/* Floating Button - always visible */}
       <button
         aria-label="Open Desktop Chatbot"
-        className={`${buttonPosition} ${bubbleBase} h-14 w-14 bg-blue-600 text-white hover:bg-blue-700 transition`}
+        className={`${buttonPosition} ${bubbleBase} h-14 w-14 text-white transition`}
+        style={{
+          backgroundColor: themeStyles.buttonBg,
+        }}
+        onMouseEnter={(e) => {
+          e.target.style.backgroundColor = themeStyles.buttonHover;
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.backgroundColor = themeStyles.buttonBg;
+        }}
         onClick={() => setOpen(true)}
       >
         <MessageCircle size={22} />
@@ -357,10 +478,33 @@ export default function DesktopTextChatbot({ embedded = false }) {
 
       {/* Panel */}
       {open && (
-        <div className={`${panelPosition} w-[360px] max-h-[70vh] bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl shadow-2xl flex flex-col overflow-hidden`}>
-          <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-200 dark:border-neutral-800">
-            <div className="text-sm font-medium">Desktop Assistant</div>
-            <button className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800" onClick={() => setOpen(false)}>
+        <div 
+          className={`${panelPosition} w-[360px] max-h-[70vh] rounded-xl shadow-2xl flex flex-col overflow-hidden`}
+          style={{
+            backgroundColor: themeStyles.panelBg,
+            borderColor: themeStyles.panelBorder,
+            border: `1px solid ${themeStyles.panelBorder}`,
+            color: themeStyles.textColor
+          }}
+        >
+          <div 
+            className="flex items-center justify-between px-4 py-2 border-b"
+            style={{ borderColor: themeStyles.panelBorder }}
+          >
+            <div className="text-sm font-medium" style={{ color: themeStyles.textColor }}>Desktop Assistant</div>
+            <button 
+              className="p-1 rounded transition-colors" 
+              style={{
+                color: themeStyles.textColor,
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.backgroundColor = themeStyles.messageBg;
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.backgroundColor = 'transparent';
+              }}
+              onClick={() => setOpen(false)}
+            >
               <X size={16} />
             </button>
           </div>
@@ -371,33 +515,47 @@ export default function DesktopTextChatbot({ embedded = false }) {
               return (
                 <div
                   key={i}
-                  className={`max-w-[75%] inline-block break-words whitespace-pre-wrap leading-relaxed px-3 py-2 rounded-lg shadow-sm ${
-                    isModel
-                      ? 'self-start bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100'
-                      : 'self-end ml-auto bg-blue-600 text-white'
-                  }`}
+                  className="max-w-[75%] inline-block break-words whitespace-pre-wrap leading-relaxed px-3 py-2 rounded-lg shadow-sm"
+                  style={{
+                    backgroundColor: isModel ? themeStyles.messageBg : themeStyles.buttonBg,
+                    color: isModel ? themeStyles.textColor : '#ffffff',
+                    alignSelf: isModel ? 'flex-start' : 'flex-end',
+                    marginLeft: isModel ? '0' : 'auto'
+                  }}
                 >
                   {m.text}
                 </div>
               );
             })}
-            {loading && <div className="text-xs text-neutral-500">Thinking…</div>}
-            {streaming && <div className="text-xs text-neutral-500">Streaming…</div>}
+            {loading && <div className="text-xs" style={{ color: themeStyles.textColor, opacity: 0.7 }}>Thinking…</div>}
+            {streaming && <div className="text-xs" style={{ color: themeStyles.textColor, opacity: 0.7 }}>Streaming…</div>}
           </div>
 
-          <div className="p-3 border-t border-neutral-200 dark:border-neutral-800">
+          <div 
+            className="p-3 border-t"
+            style={{ borderColor: themeStyles.panelBorder }}
+          >
             <div className="flex gap-2">
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
                 placeholder="Ask anything…"
-                className="flex-1 rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                style={{
+                  backgroundColor: themeStyles.inputBg,
+                  borderColor: themeStyles.inputBorder,
+                  color: themeStyles.textColor,
+                  focusRingColor: themeStyles.buttonBg
+                }}
               />
               <button
                 onClick={send}
                 disabled={loading || !input.trim()}
-                className="px-3 py-2 text-sm rounded-md bg-blue-600 text-white disabled:opacity-50"
+                className="px-3 py-2 text-sm rounded-md text-white disabled:opacity-50"
+                style={{
+                  backgroundColor: themeStyles.buttonBg
+                }}
               >
                 Send
               </button>

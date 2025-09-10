@@ -17,7 +17,8 @@ export default function WorkspaceOnboardingForm({ onSubmit, embedded = false }) 
     googleApps: [],
     features: [],
     dataSources: [],
-    otherDataSource: ''
+    otherDataSource: '',
+    selectedTheme: 'macOS'
   });
   
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -169,6 +170,7 @@ export default function WorkspaceOnboardingForm({ onSubmit, embedded = false }) 
     'Social Media Automation',
     'Speech to Speech',
     'Spreadsheet Analyzer',
+    'Store Builder',
     'Stripe',
     'Summarize Video',
     'Supply Chain Optimization',
@@ -299,6 +301,55 @@ export default function WorkspaceOnboardingForm({ onSubmit, embedded = false }) 
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-4">
+          {/* Theme Selection */}
+          <div>
+            <label className="block text-sm mb-2">Choose your desktop theme</label>
+            <div className="-mx-1">
+              <div className="flex gap-2 overflow-x-auto no-scrollbar px-1 py-1">
+                {[
+                  { id: 'macOS', name: 'macOS', colors: ['#f5f5f7', '#1d1d1f'], icon: '🍎' },
+                  { id: 'windows11', name: 'Windows 11', colors: ['#0078d4', '#ffffff'], icon: '💻' },
+                  { id: 'ubuntu', name: 'Ubuntu', colors: ['#e95420', '#2c001e'], icon: '🐧' },
+                  { id: 'cyberpunk', name: 'Cyberpunk', colors: ['#ff0080', '#ffffff'], icon: '⚡' },
+                  { id: 'ocean', name: 'Ocean', colors: ['#006994', '#87ceeb'], icon: '🌊' },
+                  { id: 'forest', name: 'Forest', colors: ['#228b22', '#90ee90'], icon: '🌲' },
+                  { id: 'sunset', name: 'Sunset', colors: ['#ff6347', '#ffd700'], icon: '🌅' }
+                ].map((theme) => {
+                  const active = form.selectedTheme === theme.id;
+                  return (
+                    <button
+                      key={theme.id}
+                      type="button"
+                      onClick={() => {
+                        setForm(prev => ({ ...prev, selectedTheme: theme.id }));
+                        // Dispatch theme change event to Desktop
+                        window.dispatchEvent(new CustomEvent('desktop-theme-change', { 
+                          detail: { themeId: theme.id, theme } 
+                        }));
+                      }}
+                      className={`shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-full border text-sm transition ${active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/70 dark:bg-black/50 border-black/10 dark:border-white/10'}`}
+                      title={theme.name}
+                      aria-pressed={active}
+                    >
+                      <span className="text-lg">{theme.icon}</span>
+                      <span>{theme.name}</span>
+                      <div className="flex gap-1 ml-1">
+                        <div 
+                          className="w-3 h-3 rounded-full border border-white/30" 
+                          style={{ backgroundColor: theme.colors[0] }}
+                        />
+                        <div 
+                          className="w-3 h-3 rounded-full border border-white/30" 
+                          style={{ backgroundColor: theme.colors[1] }}
+                        />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
           {/* Google Workspace first: horizontal scrollable emojis */}
           <div>
             <label className="block text-sm mb-2">Select your Google Workspace apps</label>
@@ -397,7 +448,7 @@ export default function WorkspaceOnboardingForm({ onSubmit, embedded = false }) 
                         className="w-5 h-5 object-contain"
                         style={{ 
                           filter: active ? 'brightness(0) invert(1)' : 'none',
-                          borderRadius: opt === 'X (Twitter)' ? '4px' : 'none'
+                          borderRadius: opt === 'X (Twitter)' ? '18px' : 'none'
                         }}
                       />
                       <span>{opt}</span>

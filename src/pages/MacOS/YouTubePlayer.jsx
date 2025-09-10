@@ -9,7 +9,7 @@ const YouTubePlayer = ({ videoId, onClose, zIndex, position = { top: 100, left: 
     <motion.div
       drag
       dragMomentum={false}
-      className="fixed bg-black rounded-lg shadow-2xl overflow-hidden border border-gray-800 resize"
+      className="absolute bg-black rounded-lg shadow-2xl overflow-hidden border border-gray-800 resize"
       style={{ 
         zIndex,
         top: position.top,
