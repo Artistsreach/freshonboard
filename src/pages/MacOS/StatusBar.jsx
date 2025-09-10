@@ -54,7 +54,23 @@ export default function StatusBar({
     return () => document.removeEventListener('click', onDocClick);
   }, []);
 
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const updateMobile = () => setIsMobile(window.matchMedia('(max-width: 640px)').matches);
+    updateMobile();
+    window.addEventListener('resize', updateMobile);
+    return () => window.removeEventListener('resize', updateMobile);
+  }, []);
+
   const formatTime = (date) => {
+    if (isMobile) {
+      return date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+    }
     return date.toLocaleTimeString('en-US', {
       hour: 'numeric',
       minute: '2-digit',
@@ -63,6 +79,13 @@ export default function StatusBar({
   };
 
   const formatDate = (date) => {
+    if (isMobile) {
+      return date.toLocaleDateString('en-US', {
+        month: '2-digit',
+        day: '2-digit',
+        year: '2-digit',
+      });
+    }
     return date.toLocaleDateString('en-US', {
       weekday: 'short',
       month: 'short',
@@ -186,15 +209,7 @@ export default function StatusBar({
       {/* Left side - Apple Menu and app name */}
       <div className="flex items-center space-x-4 relative" ref={menuRef}>
         <button onClick={() => setMenuOpen((v) => !v)} className="focus:outline-none">
-          <img
-            src={
-              theme === 'light'
-                ? 'https://utdrojtjfwjcvuzmkooj.supabase.co/storage/v1/object/public/content//Untitled%20design.png'
-                : 'https://utdrojtjfwjcvuzmkooj.supabase.co/storage/v1/object/public/content//Untitled%20design%20(4).png'
-            }
-            alt="logo"
-            className="w-4 h-4 flex-shrink-0"
-          />
+          {/* Logo removed */}
         </button>
         <span className="font-semibold">{businessName}</span>
 

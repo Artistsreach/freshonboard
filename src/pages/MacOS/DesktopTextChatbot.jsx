@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { GoogleGenAI } from '@google/genai';
+import { OpenAI } from 'openai';
 import { MessageCircle, X } from 'lucide-react';
-import { tools } from '../../lib/desktop-tools.js';
 
 // Normalize/extract function calls from various chunk shapes
 function extractFunctionCalls(chunk) {
@@ -45,7 +44,49 @@ export default function DesktopTextChatbot({ embedded = false }) {
   const [streaming, setStreaming] = useState(false);
   const modelBufferRef = useRef('');
 
-  const ai = useMemo(() => new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY }), []);
+  const openai = useMemo(() => new OpenAI({
+    baseURL: 'https://openrouter.ai/api/v1',
+    apiKey: import.meta.env.VITE_OPENROUTER_API_KEY,
+    dangerouslyAllowBrowser: true,
+    defaultHeaders: {
+      'HTTP-Referer': window.location.origin,
+      'X-Title': 'FreshOnboard Desktop',
+    },
+  }), []);
+
+  // Define tools for opening shortcut windows
+  const shortcutTools = useMemo(() => [
+    {
+      type: 'function',
+      function: {
+        name: 'open_shortcut',
+        description: 'Open a desktop shortcut or application window by name',
+        parameters: {
+          type: 'object',
+          properties: {
+            shortcut_name: {
+              type: 'string',
+              description: 'The name of the shortcut or application to open',
+              enum: [
+                // Google Workspace Apps
+                'Drive', 'Calendar', 'Sheets', 'Docs', 'Slides', 'Meet', 'Forms', 
+                'My Business', 'Google Ads', 'Analytics', 'Gmail', 'Maps',
+                // Social Media Apps
+                'Instagram', 'TikTok', 'YouTube', 'Facebook', 'X', 'LinkedIn', 
+                'Pinterest', 'Reddit',
+                // Feature-based shortcuts
+                'Bank', 'Store', 'Video', 'NFT', 'Podcast', 'Stripe', 'Tasks',
+                'Firebase', 'App', 'Tools', 'Create', 'Build', 'Explore', 'Automate',
+                'Learn', 'Context', 'Profile', 'Finder', 'Notepad', 'Calculator',
+                'Contract Creator', 'Chart', 'Table', 'Explorer', 'Image Viewer'
+              ]
+            }
+          },
+          required: ['shortcut_name']
+        }
+      }
+    }
+  ], []);
 
   // Heuristic to detect when the user is referring to what's on their screen
   const refersToOnScreen = useCallback((text) => {
@@ -167,13 +208,32 @@ export default function DesktopTextChatbot({ embedded = false }) {
     return () => window.removeEventListener('gemini-live-status', statusHandler);
   }, []);
 
+  // Function to execute tool calls and open shortcut windows
+  const executeToolCall = useCallback(async (toolCall) => {
+    const { name, arguments: args } = toolCall.function;
+    
+    if (name === 'open_shortcut') {
+      const { shortcut_name } = JSON.parse(args);
+      // Dispatch event to open the shortcut window
+      window.dispatchEvent(new CustomEvent('gemini-tool-call', {
+        detail: {
+          name: 'openAppWithAutomation',
+          args: {
+            fileId: `${shortcut_name.toLowerCase()}-shortcut`,
+            automation: { type: 'openShortcut', name: shortcut_name }
+          }
+        }
+      }));
+      return `Opened ${shortcut_name} window`;
+    }
+    
+    return `Tool ${name} executed successfully`;
+  }, []);
+
   const send = async () => {
     const trimmed = input.trim();
     if (!trimmed || loading) return;
-    if (!window.__geminiLive || !window.__geminiLive.session) {
-      setMessages(prev => [...prev, { role: 'model', text: 'Live mode is not active. Click the red button in the status bar to enable it.' }]);
-      return;
-    }
+    
     // Finalize any pending model-temp before adding a new user message
     if (modelFinalizeTimer.current) clearTimeout(modelFinalizeTimer.current);
     setMessages(prev => {
@@ -188,6 +248,7 @@ export default function DesktopTextChatbot({ embedded = false }) {
     setMessages(prev => [...prev, { role: 'user', text: trimmed }]);
     setInput('');
     setLoading(true);
+    setStreaming(true);
 
     try {
       // If the user references on-screen content, trigger a screenshot capture+analysis to gather context
@@ -207,11 +268,63 @@ export default function DesktopTextChatbot({ embedded = false }) {
         }
       }
 
-      // Send text into the Live session; responses and tool calls are handled by GeminiDesktopLive onmessage
-      await window.__geminiLive.session.sendClientContent({
-        turns: { role: 'user', parts: [{ text: trimmed }] },
-        turnComplete: true,
+      // Convert messages to OpenAI format
+      const openaiMessages = messages.map(msg => ({
+        role: msg.role === 'model' ? 'assistant' : msg.role,
+        content: msg.text
+      })).concat([{ role: 'user', content: trimmed }]);
+
+      // Call OpenRouter API with streaming and tool calling
+      const stream = await openai.chat.completions.create({
+        model: 'deepseek/deepseek-chat-v3.1:free',
+        messages: openaiMessages,
+        tools: shortcutTools,
+        stream: true,
       });
+
+      let assistantMessage = '';
+      let toolCalls = [];
+
+      for await (const chunk of stream) {
+        const choice = chunk.choices[0];
+        if (choice?.delta?.content) {
+          assistantMessage += choice.delta.content;
+          // Update streaming message
+          setMessages(prev => {
+            const lastMessage = prev[prev.length - 1];
+            if (lastMessage && lastMessage.role === 'model-temp') {
+              return [...prev.slice(0, -1), { role: 'model-temp', text: assistantMessage }];
+            }
+            return [...prev, { role: 'model-temp', text: assistantMessage }];
+          });
+        }
+
+        if (choice?.delta?.tool_calls) {
+          toolCalls.push(...choice.delta.tool_calls);
+        }
+
+        if (choice?.finish_reason === 'tool_calls') {
+          // Execute tool calls
+          for (const toolCall of toolCalls) {
+            const result = await executeToolCall(toolCall);
+            // Add tool result to messages
+            setMessages(prev => [
+              ...prev,
+              { role: 'tool', text: `Executed tool: ${result}` }
+            ]);
+          }
+        }
+      }
+
+      // Finalize the message
+      setMessages(prev => {
+        const lastMessage = prev[prev.length - 1];
+        if (lastMessage && lastMessage.role === 'model-temp') {
+          return [...prev.slice(0, -1), { role: 'model', text: assistantMessage }];
+        }
+        return [...prev, { role: 'model', text: assistantMessage }];
+      });
+
     } catch (err) {
       setMessages(prev => [
         ...prev,
@@ -219,6 +332,7 @@ export default function DesktopTextChatbot({ embedded = false }) {
       ]);
     } finally {
       setLoading(false);
+      setStreaming(false);
     }
   };
 

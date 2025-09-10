@@ -517,6 +517,11 @@ export default function Desktop() {
   }, [isDrawingMode, draw]);
 
   useEffect(() => {
+    // Auto-play YouTube video on page load
+    setYoutubePlayerId('p655dmg8eYs');
+  }, []);
+
+  useEffect(() => {
     loadDesktopFiles();
 
     window.addEventListener('toggle-theme', toggleTheme);
@@ -989,7 +994,7 @@ export default function Desktop() {
       conditionalShortcuts.push({
         id: 'meet-shortcut',
         name: 'Meet',
-        icon: 'https://cdn.creazilla.com/icons/3253847/google-meet-icon-sm.png',
+        icon: 'https://cdn.prod.website-files.com/6804774958514b6a49cf7b87/687c2721c4366c6c8996cb65_google-meet-icon-sm.png',
         type: 'app',
         is_shortcut: true,
         position_x: 385,
