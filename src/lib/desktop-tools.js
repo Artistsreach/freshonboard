@@ -372,4 +372,25 @@ export const tools = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "createPresentation",
+      description: "Create an interactive HTML slide deck and open it. Uses a self-contained HTML (e.g., Reveal.js CDN) with slides generated from a prompt or provided slides.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "Presentation title (optional)." },
+          prompt: { type: "string", description: "Describe the presentation content; the model will generate slides." },
+          slides: {
+            type: "array",
+            description: "Optional array of slide sections (markdown or HTML strings). If provided, the deck will be built from these.",
+            items: { type: "string" }
+          },
+          theme: { type: "string", description: "Optional theme hint (e.g., dark, light, corporate)." }
+        },
+        required: ["prompt"],
+      },
+    },
+  },
 ];

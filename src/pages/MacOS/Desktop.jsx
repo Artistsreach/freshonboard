@@ -788,7 +788,7 @@ export default function Desktop() {
           break;
         case "generateDocument": {
           const { prompt = '', title = 'Document', tone = 'professional', length = 'medium' } = args || {};
-          // Open a Notepad window first
+          // Open a Notepad window first (same UX as openNotepad)
           const windowId = `notepad-${Date.now()}`;
           setOpenWindows(prev => [
             ...prev,
@@ -808,32 +808,26 @@ export default function Desktop() {
           ]);
           setNextWindowPosition(prev => ({ top: prev.top + 30, left: prev.left + 30 }));
           setWindowZIndex(prev => prev + 1);
-          // Generate the document with DeepSeek via OpenRouter
-          (async () => {
+
+          // Stream content into Notepad using GoogleGenAI, matching openNotepad behavior
+          const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+          ai.models.generateContentStream({
+            model: "gemini-2.5-flash-lite",
+            contents: `Tone: ${tone}. Length: ${length}. Use clear headings and short paragraphs. Plain text only.\n\n${prompt}`,
+          }).then(async (response) => {
             try {
-              const openai = new OpenAI({
-                baseURL: 'https://openrouter.ai/api/v1',
-                apiKey: import.meta.env.VITE_OPENROUTER_API_KEY,
-                dangerouslyAllowBrowser: true,
-                defaultHeaders: { 'HTTP-Referer': window.location.origin, 'X-Title': 'Freshboard Desktop' },
-              });
-              const sys = `You write high-quality plain text documents. Tone: ${tone}. Length: ${length}. Use clear headings and short paragraphs when helpful. Output plain text only.`;
-              const user = `Create a document based on the following request:\n\n${prompt}`;
-              const completion = await openai.chat.completions.create({
-                model: 'deepseek/deepseek-chat-v3.1:free',
-                messages: [
-                  { role: 'system', content: sys },
-                  { role: 'user', content: user },
-                ],
-                temperature: 0.7,
-              });
-              const text = completion.choices?.[0]?.message?.content || '';
-              setOpenWindows(prev => prev.map(w => w.id === windowId ? { ...w, content: text } : w));
+              for await (const chunk of response) {
+                const add = chunk?.text || '';
+                if (add) {
+                  setOpenWindows(prev => prev.map(w => w.id === windowId ? { ...w, content: (w.content || '') + add } : w));
+                }
+              }
             } catch (err) {
-              console.error('generateDocument failed:', err);
-              setOpenWindows(prev => prev.map(w => w.id === windowId ? { ...w, content: (w.content || '') + `\n\n[Generation failed: ${err?.message || err}]` } : w));
+              setOpenWindows(prev => prev.map(w => w.id === windowId ? { ...w, content: (w.content || '') + `\n\n[Generation error: ${err?.message || err}]` } : w));
             }
-          })();
+          }).catch((err) => {
+            setOpenWindows(prev => prev.map(w => w.id === windowId ? { ...w, content: (w.content || '') + `\n\n[Generation failed: ${err?.message || err}]` } : w));
+          });
           break;
         }
         case "generateEmailDraft": {
