@@ -45,23 +45,24 @@ export default function DriveFileBrowser({
   }, []);
 
   useEffect(() => {
-    if (!isOpen) return;
-    (async () => {
+    const init = async () => {
       try {
-        setError('');
-        setLoading(true);
+        if (!window.google) {
+          throw new Error('Google API not loaded');
+        }
         await ensureAuthorized({ interactive: true });
         setAuthorized(true);
         const { files: first, nextPageToken: token } = await listFilesPaged({ pageSize: 25, orderBy: 'modifiedTime desc' });
         setFiles(first);
         setNextPageToken(token || null);
-      } catch (e) {
-        setAuthorized(false);
-        setError(e?.message || 'Authorization failed.');
+      } catch (error) {
+        console.warn('Google Drive initialization:', error);
+        setError('Google Drive is not available. Please check your internet connection or contact support.');
       } finally {
         setLoading(false);
       }
-    })();
+    };
+    init();
   }, [isOpen]);
 
   const handleSignIn = async () => {

@@ -40,7 +40,7 @@ export default function WorkspaceOnboardingForm({ onSubmit, embedded = false }) 
   }), []);
 
   const googleWorkspaceOptions = useMemo(() => [
-    'Gmail', 'Drive', 'Docs', 'Sheets', 'Slides', 'Calendar', 'Meet', 'Forms', 'Google My Business', 'Google Ads', 'Google Analytics', 'Google Maps'
+    'Gmail', 'Drive', 'Docs', 'Sheets', 'Slides', 'Calendar', 'Meet', 'Forms', 'Google MyBusiness', 'Google Ads', 'Google Analytics', 'Google Maps'
   ], []);
 
   const googleIcons = useMemo(() => ({
@@ -52,7 +52,7 @@ export default function WorkspaceOnboardingForm({ onSubmit, embedded = false }) 
     'Calendar': 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Google_Calendar_icon_%282020%29.svg/2048px-Google_Calendar_icon_%282020%29.svg.png',
         'Meet': 'https://cdn.prod.website-files.com/6804774958514b6a49cf7b87/687c2721c4366c6c8996cb65_google-meet-icon-sm.png',
     'Forms': 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Google_Forms_2020_Logo.svg/1489px-Google_Forms_2020_Logo.svg.png',
-    'Google My Business': 'https://cdn.worldvectorlogo.com/logos/google-my-business-logo.svg',
+    'Google MyBusiness': 'https://cdn.worldvectorlogo.com/logos/google-my-business-logo.svg',
     'Google Ads': 'https://upload.wikimedia.org/wikipedia/commons/c/cc/Google_Ads_icon.svg',
     'Google Analytics': 'https://brandeps.com/logo-download/G/Google-Analytics-logo-01.png',
     'Google Maps': 'https://cdn-icons-png.flaticon.com/512/355/355980.png',
@@ -130,6 +130,7 @@ export default function WorkspaceOnboardingForm({ onSubmit, embedded = false }) 
     'AI Video Assistant',
     'App Builder',
     'Automated Report Generation',
+    'Automation Builder',
     'Bank',
     'Calculator',
     'Charts & Graphs',

@@ -40,7 +40,12 @@ async function ensureGISLoaded() {
 function initTokenClient(scopes = DEFAULT_SCOPES) {
   if (tokenClient) return tokenClient;
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-  if (!clientId) throw new Error('Missing VITE_GOOGLE_CLIENT_ID');
+  if (!clientId) {
+    console.warn('Google Drive integration disabled: Missing VITE_GOOGLE_CLIENT_ID');
+    return {
+      requestAccessToken: (callback) => callback({ error: 'Google Drive integration is not configured.' })
+    };
+  }
   tokenClient = window.google.accounts.oauth2.initTokenClient({
     client_id: clientId,
     scope: scopes.join(' '),

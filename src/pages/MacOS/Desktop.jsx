@@ -1591,6 +1591,50 @@ ${includeSignature ? 'Include a simple generic signature.' : 'Do not include any
   };
 
   const handleDesktopIconDoubleClick = (file) => {
+    // Open Table Editor when Sheets shortcut is clicked
+    if (file?.id === 'sheets-shortcut') {
+      const windowId = `table-editor-${Date.now()}`;
+      setOpenWindows(prev => [
+        ...prev,
+        {
+          id: windowId,
+          type: 'table-editor',
+          isMaximized: false,
+          zIndex: windowZIndex,
+          position: adjustedNextWindowPosition,
+          width: 800,
+          height: 600,
+          title: 'Table Editor',
+          data: [['', ''], ['', '']], // Initialize with 2x2 empty cells
+        },
+      ]);
+      setNextWindowPosition(prev => ({ top: prev.top + 30, left: prev.left + 30 }));
+      setWindowZIndex(prev => prev + 1);
+      return;
+    }
+
+    // Open Notepad when Docs shortcut is clicked
+    if (file?.id === 'docs-shortcut') {
+      const windowId = `notepad-${Date.now()}`;
+      setOpenWindows(prev => [
+        ...prev,
+        {
+          id: windowId,
+          type: 'notepad',
+          isMaximized: false,
+          zIndex: windowZIndex,
+          position: adjustedNextWindowPosition,
+          content: '',
+          width: 600,
+          height: 500,
+          defaultEditing: true,
+        },
+      ]);
+      setNextWindowPosition(prev => ({ top: prev.top + 30, left: prev.left + 30 }));
+      setWindowZIndex(prev => prev + 1);
+      return;
+    }
+
     // Open Gmail app
     if (file?.id === 'gmail-shortcut') {
       const windowId = `gmail-${Date.now()}`;
@@ -1604,6 +1648,91 @@ ${includeSignature ? 'Include a simple generic signature.' : 'Do not include any
           position: adjustedNextWindowPosition,
           width: 600,
           height: 500,
+        },
+      ]);
+      setNextWindowPosition(prev => ({ top: prev.top + 30, left: prev.left + 30 }));
+      setWindowZIndex(prev => prev + 1);
+      return;
+    }
+
+    // Tools folder shortcuts -> open dedicated windows
+    if (file?.id === 'calculator-shortcut') {
+      const calculatorWindowId = `calculator-${Date.now()}`;
+      setOpenWindows(prev => [
+        ...prev,
+        {
+          id: calculatorWindowId,
+          type: 'calculator',
+          isMaximized: false,
+          zIndex: windowZIndex,
+          position: adjustedNextWindowPosition,
+          width: 320,
+          height: 420,
+        },
+      ]);
+      setNextWindowPosition(prev => ({ top: prev.top + 30, left: prev.left + 30 }));
+      setWindowZIndex(prev => prev + 1);
+      return;
+    }
+
+    if (file?.id === 'notepad-shortcut') {
+      const windowId = `notepad-${Date.now()}`;
+      setOpenWindows(prev => [
+        ...prev,
+        {
+          id: windowId,
+          type: 'notepad',
+          isMaximized: false,
+          zIndex: windowZIndex,
+          position: adjustedNextWindowPosition,
+          content: '',
+          width: 500,
+          height: 400,
+          defaultEditing: true,
+        },
+      ]);
+      setNextWindowPosition(prev => ({ top: prev.top + 30, left: prev.left + 30 }));
+      setWindowZIndex(prev => prev + 1);
+      return;
+    }
+
+    if (file?.id === 'contract-creator-shortcut') {
+      const contractWindowId = `contract-creator-${Date.now()}`;
+      setOpenWindows(prev => [
+        ...prev,
+        {
+          id: contractWindowId,
+          type: 'contract-creator',
+          isMaximized: false,
+          zIndex: windowZIndex,
+          position: adjustedNextWindowPosition,
+          width: 800,
+          height: 520,
+        },
+      ]);
+      setNextWindowPosition(prev => ({ top: prev.top + 30, left: prev.left + 30 }));
+      setWindowZIndex(prev => prev + 1);
+      return;
+    }
+
+    if (file?.id === 'image-editor-shortcut') {
+      // Open the generated image window (ImageViewerWindow) ready to edit
+      setImageViewerWindow({ isOpen: true, imageData: '', titlePrompt: '' });
+      return;
+    }
+
+    if (file?.id === 'drive-shortcut') {
+      const driveWindowId = `drive-${Date.now()}`;
+      setOpenWindows(prev => [
+        ...prev,
+        {
+          id: driveWindowId,
+          type: 'drive',
+          isMaximized: false,
+          zIndex: windowZIndex,
+          position: adjustedNextWindowPosition,
+          width: 960,
+          height: 600,
         },
       ]);
       setNextWindowPosition(prev => ({ top: prev.top + 30, left: prev.left + 30 }));
@@ -1654,9 +1783,13 @@ ${includeSignature ? 'Include a simple generic signature.' : 'Do not include any
       return;
     }
 
-    // Open folders in Finder window
+    // Open folders in Finder window (top-left bias: up 400px, left 250px)
     if (file?.type === 'folder') {
       const windowId = `finder-${file.id}-${Date.now()}`;
+      const baseTop = adjustedNextWindowPosition?.top || 0;
+      const baseLeft = adjustedNextWindowPosition?.left || 0;
+      const desiredTop = Math.max(0, baseTop - 400);
+      const desiredLeft = Math.max(0, baseLeft - 250);
       setOpenWindows(prev => [
         ...prev,
         {
@@ -1666,7 +1799,7 @@ ${includeSignature ? 'Include a simple generic signature.' : 'Do not include any
           folder: file,
           isMaximized: false,
           zIndex: windowZIndex,
-          position: adjustedNextWindowPosition,
+          position: { top: desiredTop, left: desiredLeft },
           width: 800,
           height: 400,
         },
