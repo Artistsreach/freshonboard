@@ -1,28 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { OpenAI } from 'openai';
 import { MessageCircle, X } from 'lucide-react';
-
-// Normalize/extract function calls from various chunk shapes
-function extractFunctionCalls(chunk) {
-  const out = [];
-  if (!chunk) return out;
-  // Preferred: chunk.toolCall.functionCalls (Live-like)
-  if (chunk.toolCall && Array.isArray(chunk.toolCall.functionCalls)) {
-    for (const fc of chunk.toolCall.functionCalls) out.push(fc);
-  }
-  // Some SDKs: chunk.functionCalls (array)
-  if (Array.isArray(chunk.functionCalls)) {
-    for (const fc of chunk.functionCalls) out.push(fc);
-  }
-  // Parts-based: candidates[0].content.parts with part.functionCall
-  const parts = chunk?.candidates?.[0]?.content?.parts;
-  if (Array.isArray(parts)) {
-    for (const p of parts) {
-      if (p?.functionCall) out.push(p.functionCall);
-    }
-  }
-  return out;
-}
+import { tools as desktopTools } from '../../lib/desktop-tools.js';
 
 // Simple, text-only chatbot for the MacOS Desktop page
 // Anchored bottom-right, toggled by a floating button.
@@ -60,39 +39,6 @@ export default function DesktopTextChatbot({ embedded = false }) {
     },
   }), []);
 
-  // Define tools for opening shortcut windows
-  const shortcutTools = useMemo(() => [
-    {
-      type: 'function',
-      function: {
-        name: 'open_shortcut',
-        description: 'Open a desktop shortcut or application window by name',
-        parameters: {
-          type: 'object',
-          properties: {
-            shortcut_name: {
-              type: 'string',
-              description: 'The name of the shortcut or application to open',
-              enum: [
-                // Google Workspace Apps
-                'Drive', 'Calendar', 'Sheets', 'Docs', 'Slides', 'Meet', 'Forms', 
-                'My Business', 'Google Ads', 'Analytics', 'Gmail', 'Maps',
-                // Social Media Apps
-                'Instagram', 'TikTok', 'YouTube', 'Facebook', 'X', 'LinkedIn', 
-                'Pinterest', 'Reddit',
-                // Feature-based shortcuts
-                'Bank', 'Store', 'Video', 'NFT', 'Podcast', 'Stripe', 'Tasks',
-                'Firebase', 'App', 'Tools', 'Create', 'Build', 'Explore', 'Automate',
-                'Learn', 'Context', 'Profile', 'Finder', 'Notepad', 'Calculator',
-                'Contract Creator', 'Chart', 'Table', 'Explorer', 'Image Viewer'
-              ]
-            }
-          },
-          required: ['shortcut_name']
-        }
-      }
-    }
-  ], []);
 
   // Heuristic to detect when the user is referring to what's on their screen
   const refersToOnScreen = useCallback((text) => {
@@ -225,26 +171,20 @@ export default function DesktopTextChatbot({ embedded = false }) {
     return () => window.removeEventListener('desktop-theme-change', handleThemeChange);
   }, []);
 
-  // Function to execute tool calls and open shortcut windows
+  // Tool execution mapping for desktop tools
   const executeToolCall = useCallback(async (toolCall) => {
     const { name, arguments: args } = toolCall.function;
+    const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args;
     
-    if (name === 'open_shortcut') {
-      const { shortcut_name } = JSON.parse(args);
-      // Dispatch event to open the shortcut window
-      window.dispatchEvent(new CustomEvent('gemini-tool-call', {
-        detail: {
-          name: 'openAppWithAutomation',
-          args: {
-            fileId: `${shortcut_name.toLowerCase()}-shortcut`,
-            automation: { type: 'openShortcut', name: shortcut_name }
-          }
-        }
-      }));
-      return `Opened ${shortcut_name} window`;
-    }
+    // Dispatch the tool call to the desktop interface
+    window.dispatchEvent(new CustomEvent('gemini-tool-call', {
+      detail: {
+        name: name,
+        args: parsedArgs
+      }
+    }));
     
-    return `Tool ${name} executed successfully`;
+    return `Executed ${name} successfully`;
   }, []);
 
   const send = async () => {
@@ -295,7 +235,7 @@ export default function DesktopTextChatbot({ embedded = false }) {
       const stream = await openai.chat.completions.create({
         model: 'deepseek/deepseek-chat-v3.1:free',
         messages: openaiMessages,
-        tools: shortcutTools,
+        tools: desktopTools,
         stream: true,
       });
 
@@ -304,6 +244,7 @@ export default function DesktopTextChatbot({ embedded = false }) {
 
       for await (const chunk of stream) {
         const choice = chunk.choices[0];
+        
         if (choice?.delta?.content) {
           assistantMessage += choice.delta.content;
           // Update streaming message
@@ -316,19 +257,43 @@ export default function DesktopTextChatbot({ embedded = false }) {
           });
         }
 
+        // Handle tool calls in streaming
         if (choice?.delta?.tool_calls) {
-          toolCalls.push(...choice.delta.tool_calls);
+          for (const deltaToolCall of choice.delta.tool_calls) {
+            const index = deltaToolCall.index;
+            if (!toolCalls[index]) {
+              toolCalls[index] = {
+                id: deltaToolCall.id,
+                type: deltaToolCall.type,
+                function: {
+                  name: deltaToolCall.function?.name || '',
+                  arguments: deltaToolCall.function?.arguments || ''
+                }
+              };
+            } else {
+              // Accumulate function arguments
+              if (deltaToolCall.function?.arguments) {
+                toolCalls[index].function.arguments += deltaToolCall.function.arguments;
+              }
+            }
+          }
         }
 
         if (choice?.finish_reason === 'tool_calls') {
-          // Execute tool calls
-          for (const toolCall of toolCalls) {
-            const result = await executeToolCall(toolCall);
-            // Add tool result to messages
-            setMessages(prev => [
-              ...prev,
-              { role: 'tool', text: `Executed tool: ${result}` }
-            ]);
+          // Execute all accumulated tool calls
+          for (const toolCall of toolCalls.filter(Boolean)) {
+            try {
+              const result = await executeToolCall(toolCall);
+              setMessages(prev => [
+                ...prev,
+                { role: 'tool', text: result }
+              ]);
+            } catch (error) {
+              setMessages(prev => [
+                ...prev,
+                { role: 'tool', text: `Error executing ${toolCall.function.name}: ${error.message}` }
+              ]);
+            }
           }
         }
       }
@@ -471,7 +436,11 @@ export default function DesktopTextChatbot({ embedded = false }) {
         onMouseLeave={(e) => {
           e.target.style.backgroundColor = themeStyles.buttonBg;
         }}
-        onClick={() => setOpen(true)}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen(!open);
+        }}
       >
         <MessageCircle size={22} />
       </button>
@@ -479,7 +448,7 @@ export default function DesktopTextChatbot({ embedded = false }) {
       {/* Panel */}
       {open && (
         <div 
-          className={`${panelPosition} w-[360px] max-h-[70vh] rounded-xl shadow-2xl flex flex-col overflow-hidden`}
+          className={`${panelPosition} w-[360px] h-auto max-h-[400px] rounded-xl shadow-2xl flex flex-col overflow-hidden`}
           style={{
             backgroundColor: themeStyles.panelBg,
             borderColor: themeStyles.panelBorder,

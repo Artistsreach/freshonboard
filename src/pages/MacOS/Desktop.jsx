@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { motion } from 'framer-motion';
 
 import { File } from '../../entities/File';
 import StatusBar from './StatusBar';
@@ -20,14 +21,17 @@ import CalculatorWindow from './CalculatorWindow';
 import ContractCreatorWindow from './ContractCreatorWindow';
 import BankWindow from './BankWindow';
 import ChartWindow from './ChartWindow';
+import InteractiveHtmlWindow from './InteractiveHtmlWindow';
 import DriveFileBrowser from './DriveFileBrowser';
 import WorkspaceModal from './WorkspaceModal';
+import GmailWindow from '../../components/windows/GmailWindow';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { deepResearch } from '../../lib/firecrawl';
 import { generateImage } from '../../lib/geminiImageGeneration';
 import { GoogleGenAI } from '@google/genai';
+import OpenAI from 'openai';
 import { analyzeImageDataUrl } from '../../lib/analyzeImageWithGemini';
 import { generateVideoWithVeoFromImage } from '../../lib/geminiVideoGeneration';
 import { captureScreenPngDataUrl } from '../../lib/captureScreenshotClient';
@@ -462,28 +466,30 @@ export default function Desktop() {
         octx.putImageData(selectionImage, newX, newY);
       }
     }
-  }, [isDrawing, isDrawingMode, drawingTool, isSelecting, selectionStart, isDraggingSelection, dragStartPt, selectionOrigin, selectionRect, selectionImage, canvasSize.width, canvasSize.height]);
+  }, [isDrawingMode, selectionRect, sourceCleared, selectionImage, selectionOrigin, canvasSize.width, canvasSize.height]);
 
-  // Key handling for selection: Delete/Backspace clears area, Escape cancels
+  const handleTouchMove = (e) => {
+    if (isDrawingMode) {
+      e.preventDefault();
+      draw(e);
+    }
+  };
+
   useEffect(() => {
     const handleKey = (e) => {
-      if (!isDrawingMode) return;
-      if (!selectionRect) return;
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        const ctx = contextRef.current;
-        if (ctx) {
-          ctx.save();
-          ctx.clearRect(selectionRect.x, selectionRect.y, selectionRect.w, selectionRect.h);
-          ctx.restore();
+      const tag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
+      if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+      if (e.key === 'Delete') {
+        if (selectionRect) {
+          setSelectionRect(null);
+          setSelectionStart(null);
+          selectionCtxRef.current?.clearRect(0, 0, canvasSize.width, canvasSize.height);
+          setIsDraggingSelection(false);
+          setDragStartPt(null);
+          setSelectionOrigin(null);
+          setSelectionImage(null);
+          setSourceCleared(false);
         }
-        setSelectionRect(null);
-        setSelectionStart(null);
-        selectionCtxRef.current?.clearRect(0, 0, canvasSize.width, canvasSize.height);
-        setIsDraggingSelection(false);
-        setDragStartPt(null);
-        setSelectionOrigin(null);
-        setSelectionImage(null);
-        setSourceCleared(false);
       } else if (e.key === 'Escape') {
         // If we had cleared the source for dragging, restore it to original place
         if (sourceCleared && selectionImage && selectionOrigin) {
@@ -502,7 +508,7 @@ export default function Desktop() {
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [isDrawingMode, selectionRect, sourceCleared, selectionImage, selectionOrigin, canvasSize.width, canvasSize.height]);
+  }, [selectionRect, canvasSize.width, canvasSize.height, sourceCleared, selectionImage, selectionOrigin]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -646,6 +652,58 @@ export default function Desktop() {
       setNextWindowPosition(prev => ({ top: prev.top + 30, left: prev.left + 30 }));
       setWindowZIndex(prev => prev + 1);
 
+      // First attempt: generate fully interactive standalone HTML (Chart.js) from prompt/data
+      if (source !== 'screenshot') {
+        (async () => {
+          try {
+            const openai = new OpenAI({
+              baseURL: 'https://openrouter.ai/api/v1',
+              apiKey: import.meta.env.VITE_OPENROUTER_API_KEY,
+              dangerouslyAllowBrowser: true,
+              defaultHeaders: { 'HTTP-Referer': window.location.origin, 'X-Title': 'Freshboard Desktop' },
+            });
+            const sys = `You output COMPLETE, SELF-CONTAINED HTML for an interactive Chart.js visualization. Include <!doctype html>, <html>, <head> with <script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>, a <canvas id=\"chart\">, and a <script> that constructs the chart. If data is provided, use it; else derive reasonable data from the prompt. Add responsive config and helpful tooltips. Output HTML ONLY (no markdown).`;
+            const userParts = [];
+            if (prompt) userParts.push(`Request: ${prompt}`);
+            if (chartType) userParts.push(`Desired chart type: ${chartType}`);
+            if (data) userParts.push(`Provided data JSON: ${JSON.stringify(data)}`);
+            if (options) userParts.push(`Provided options JSON: ${JSON.stringify(options)}`);
+            const userMsg = userParts.join('\n');
+            const completion = await openai.chat.completions.create({
+              model: 'deepseek/deepseek-chat-v3.1:free',
+              messages: [
+                { role: 'system', content: sys },
+                { role: 'user', content: userMsg || 'Create an example chart.' },
+              ],
+              temperature: 0.3,
+            });
+            let html = completion.choices?.[0]?.message?.content || '';
+            html = html.trim().replace(/^```html\n?|```$/g, '');
+            if (html.toLowerCase().includes('<canvas') && html.toLowerCase().includes('chart.js')) {
+              const htmlId = `ihtml-${Date.now()}`;
+              setOpenWindows(prev => ([
+                ...prev,
+                {
+                  id: htmlId,
+                  type: 'interactive-html',
+                  isMaximized: false,
+                  zIndex: windowZIndex + 1,
+                  position: adjustedNextWindowPosition,
+                  width: 800,
+                  height: 560,
+                  title: title || 'Interactive Chart',
+                  html,
+                },
+              ]));
+              setWindowZIndex(prev => prev + 2);
+            }
+          } catch (err) {
+            // Non-fatal: fallback handled below
+            console.warn('Interactive HTML generation failed', err);
+          }
+        })();
+      }
+
       if (source === 'screenshot') {
         (async () => {
           try {
@@ -668,6 +726,38 @@ export default function Desktop() {
             }
           } catch (err) {
             setOpenWindows(prev => prev.map(w => w.id === windowId ? { ...w, title: (w.title || 'Chart') + ` (capture failed)` } : w));
+          }
+        })();
+      } else if ((!data || (Array.isArray(data?.labels) && data.labels.length === 0)) && prompt) {
+        // Generate Chart.js config from natural language prompt via DeepSeek
+        (async () => {
+          try {
+            const openai = new OpenAI({
+              baseURL: 'https://openrouter.ai/api/v1',
+              apiKey: import.meta.env.VITE_OPENROUTER_API_KEY,
+              dangerouslyAllowBrowser: true,
+              defaultHeaders: { 'HTTP-Referer': window.location.origin, 'X-Title': 'Freshboard Desktop' },
+            });
+            const sys = `You produce STRICT JSON for Chart.js configuration. Respond with ONLY JSON: {"type": <string>, "data": {"labels": [...], "datasets": [{"label": <string>, "data": [...]}]}, "options": {}}. Do not include markdown fences or commentary.`;
+            const user = `Create a Chart.js configuration for this request: ${prompt}\nDesired chart type (optional): ${chartType}. Ensure labels and datasets lengths match. Include responsive options and helpful tooltips.`;
+            const completion = await openai.chat.completions.create({
+              model: 'deepseek/deepseek-chat-v3.1:free',
+              messages: [
+                { role: 'system', content: sys },
+                { role: 'user', content: user },
+              ],
+              temperature: 0.2,
+            });
+            let text = completion.choices?.[0]?.message?.content || '';
+            text = text.trim().replace(/^```json\n?|```$/g, '');
+            const cfg = JSON.parse(text);
+            if (cfg && typeof cfg === 'object' && cfg.data && cfg.data.labels) {
+              setOpenWindows(prev => prev.map(w => w.id === windowId ? { ...w, config: cfg } : w));
+            }
+          } catch (err) {
+            console.warn('Chart config generation failed', err);
+            // keep initial config; append note
+            setOpenWindows(prev => prev.map(w => w.id === windowId ? { ...w, title: (w.title || 'Chart') + ' (default config in use)' } : w));
           }
         })();
       }
@@ -696,6 +786,123 @@ export default function Desktop() {
         case "createPodcast":
           findAndOpenFile('podcast-shortcut');
           break;
+        case "generateDocument": {
+          const { prompt = '', title = 'Document', tone = 'professional', length = 'medium' } = args || {};
+          // Open a Notepad window first
+          const windowId = `notepad-${Date.now()}`;
+          setOpenWindows(prev => [
+            ...prev,
+            {
+              id: windowId,
+              type: 'notepad',
+              isMaximized: false,
+              zIndex: windowZIndex,
+              position: adjustedNextWindowPosition,
+              title,
+              content: '',
+              defaultEditing: true,
+              width: 600,
+              height: 500,
+              bottom: 0,
+            },
+          ]);
+          setNextWindowPosition(prev => ({ top: prev.top + 30, left: prev.left + 30 }));
+          setWindowZIndex(prev => prev + 1);
+          // Generate the document with DeepSeek via OpenRouter
+          (async () => {
+            try {
+              const openai = new OpenAI({
+                baseURL: 'https://openrouter.ai/api/v1',
+                apiKey: import.meta.env.VITE_OPENROUTER_API_KEY,
+                dangerouslyAllowBrowser: true,
+                defaultHeaders: { 'HTTP-Referer': window.location.origin, 'X-Title': 'Freshboard Desktop' },
+              });
+              const sys = `You write high-quality plain text documents. Tone: ${tone}. Length: ${length}. Use clear headings and short paragraphs when helpful. Output plain text only.`;
+              const user = `Create a document based on the following request:\n\n${prompt}`;
+              const completion = await openai.chat.completions.create({
+                model: 'deepseek/deepseek-chat-v3.1:free',
+                messages: [
+                  { role: 'system', content: sys },
+                  { role: 'user', content: user },
+                ],
+                temperature: 0.7,
+              });
+              const text = completion.choices?.[0]?.message?.content || '';
+              setOpenWindows(prev => prev.map(w => w.id === windowId ? { ...w, content: text } : w));
+            } catch (err) {
+              console.error('generateDocument failed:', err);
+              setOpenWindows(prev => prev.map(w => w.id === windowId ? { ...w, content: (w.content || '') + `\n\n[Generation failed: ${err?.message || err}]` } : w));
+            }
+          })();
+          break;
+        }
+        case "generateEmailDraft": {
+          const { to = '', subject = '', prompt = '', tone = 'friendly', length = 'medium', includeSignature = false } = args || {};
+          (async () => {
+            try {
+              const openai = new OpenAI({
+                baseURL: 'https://openrouter.ai/api/v1',
+                apiKey: import.meta.env.VITE_OPENROUTER_API_KEY,
+                dangerouslyAllowBrowser: true,
+                defaultHeaders: {
+                  'HTTP-Referer': window.location.origin,
+                  'X-Title': 'Freshboard Desktop',
+                },
+              });
+              const sys = `You write clear, concise email drafts in plain text. Tone: ${tone}. Length: ${length}. Do not include signatures unless explicitly requested.`;
+              const user = `Draft an email${subject ? ` with subject: "${subject}"` : ''}.
+Context: ${prompt}
+Recipient: ${to || 'general'}
+${includeSignature ? 'Include a simple generic signature.' : 'Do not include any signature.'}`;
+              const completion = await openai.chat.completions.create({
+                model: 'deepseek/deepseek-chat-v3.1:free',
+                messages: [
+                  { role: 'system', content: sys },
+                  { role: 'user', content: user },
+                ],
+                temperature: 0.7,
+              });
+              const body = completion.choices?.[0]?.message?.content || '';
+              // Open Gmail window with initial compose
+              const windowId = `gmail-${Date.now()}`;
+              setOpenWindows(prev => ([
+                ...prev,
+                {
+                  id: windowId,
+                  type: 'gmail',
+                  isMaximized: false,
+                  zIndex: windowZIndex,
+                  position: adjustedNextWindowPosition,
+                  width: 600,
+                  height: 500,
+                  initialCompose: { to, subject, body },
+                }
+              ]));
+              setNextWindowPosition(prev => ({ top: prev.top + 30, left: prev.left + 30 }));
+              setWindowZIndex(prev => prev + 1);
+            } catch (err) {
+              console.error('Failed to generate email draft:', err);
+              // Fallback: open empty compose
+              const windowId = `gmail-${Date.now()}`;
+              setOpenWindows(prev => ([
+                ...prev,
+                {
+                  id: windowId,
+                  type: 'gmail',
+                  isMaximized: false,
+                  zIndex: windowZIndex,
+                  position: adjustedNextWindowPosition,
+                  width: 600,
+                  height: 500,
+                  initialCompose: { to, subject, body: '' },
+                }
+              ]));
+              setNextWindowPosition(prev => ({ top: prev.top + 30, left: prev.left + 30 }));
+              setWindowZIndex(prev => prev + 1);
+            }
+          })();
+          break;
+        }
         case "toggleTheme":
           window.dispatchEvent(new CustomEvent('toggle-theme'));
           break;
@@ -912,6 +1119,16 @@ export default function Desktop() {
           })();
           break;
         }
+        case "openAppWithAutomation":
+          // Find the file by name or ID
+          const all = [...staticShortcuts, ...desktopFiles];
+          const file = all.find(f => f.name === args.appName || f.id === args.appName);
+          if (file) {
+            openAppWithAutomation(file.id, args.automationParams);
+          } else {
+            console.warn(`App with name/id "${args.appName}" not found.`);
+          }
+          break;
         default:
           console.warn("Unknown tool call:", name);
       }
@@ -1380,6 +1597,26 @@ export default function Desktop() {
   };
 
   const handleDesktopIconDoubleClick = (file) => {
+    // Open Gmail app
+    if (file?.id === 'gmail-shortcut') {
+      const windowId = `gmail-${Date.now()}`;
+      setOpenWindows(prev => [
+        ...prev,
+        {
+          id: windowId,
+          type: 'gmail',
+          isMaximized: false,
+          zIndex: windowZIndex,
+          position: adjustedNextWindowPosition,
+          width: 600,
+          height: 500,
+        },
+      ]);
+      setNextWindowPosition(prev => ({ top: prev.top + 30, left: prev.left + 30 }));
+      setWindowZIndex(prev => prev + 1);
+      return;
+    }
+
     // Open text files in Notepad
     if (file?.content) {
       const windowId = `notepad-${Date.now()}`;
@@ -2202,6 +2439,105 @@ return (
                         title={window.title}
                         videoUrl={window.videoUrl}
                           />
+                        );
+                      }
+                      if (window.type === 'notepad') {
+                        return (
+                          <NotepadWindow
+                            key={window.id}
+                            isOpen={!minimizedWindows.includes(window.id)}
+                            onClose={() => closeWindow(window.id)}
+                            onMinimize={() => minimizeWindow(window.id)}
+                            onMaximize={() => maximizeWindow(window.id)}
+                            isMaximized={window.isMaximized}
+                            zIndex={window.zIndex}
+                            onClick={() => bringToFront(window.id)}
+                            position={window.position}
+                            windowId={window.id}
+                            title={window.title || 'Notepad'}
+                            content={window.content || ''}
+                            defaultEditing={window.defaultEditing}
+                          />
+                        );
+                      }
+                      if (window.type === 'interactive-html') {
+                        return (
+                          <InteractiveHtmlWindow
+                            key={window.id}
+                            isOpen={!minimizedWindows.includes(window.id)}
+                            onClose={() => closeWindow(window.id)}
+                            onMinimize={() => minimizeWindow(window.id)}
+                            onMaximize={() => maximizeWindow(window.id)}
+                            isMaximized={window.isMaximized}
+                            zIndex={window.zIndex}
+                            onClick={() => bringToFront(window.id)}
+                            position={window.position}
+                            windowId={window.id}
+                            title={window.title || 'Interactive Chart'}
+                            html={window.html || ''}
+                          />
+                        );
+                      }
+                      if (window.type === 'gmail') {
+                        return (
+                          <motion.div
+                            key={window.id}
+                            drag
+                            dragMomentum={false}
+                            dragHandle=".drag-handle"
+                            onDragEnd={(e, info) => handleWindowDrag(window.id, e, info)}
+                            className={`absolute bg-white rounded-lg shadow-2xl border border-gray-300 overflow-hidden ${
+                              minimizedWindows.includes(window.id) ? 'hidden' : ''
+                            } ${window.isMaximized ? 'inset-4' : ''}`}
+                            style={{
+                              zIndex: window.zIndex,
+                              top: window.isMaximized ? 0 : window.position.top,
+                              left: window.isMaximized ? 0 : window.position.left,
+                              width: window.isMaximized ? '100%' : window.width,
+                              height: window.isMaximized ? '100%' : window.height,
+                            }}
+                            onClick={() => bringToFront(window.id)}
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            onMouseDownCapture={(e) => {
+                              const t = e.target;
+                              const tag = t && t.tagName ? t.tagName.toLowerCase() : '';
+                              if (tag === 'input' || tag === 'textarea' || t?.isContentEditable) {
+                                e.stopPropagation();
+                              }
+                            }}
+                          >
+                            {/* Window Header */}
+                            <div className="drag-handle flex items-center justify-between p-2 bg-gray-100 border-b border-gray-200 cursor-move">
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  onClick={() => closeWindow(window.id)}
+                                  className="w-3 h-3 bg-red-500 rounded-full hover:bg-red-600"
+                                />
+                                <button
+                                  onClick={() => minimizeWindow(window.id)}
+                                  className="w-3 h-3 bg-yellow-500 rounded-full hover:bg-yellow-600"
+                                />
+                                <button
+                                  onClick={() => maximizeWindow(window.id)}
+                                  className="w-3 h-3 bg-green-500 rounded-full hover:bg-green-600"
+                                />
+                              </div>
+                              <div className="text-sm font-medium text-gray-700 select-none">Mail</div>
+                              <div className="w-16"></div>
+                            </div>
+                            {/* Gmail Window Content */}
+                            <div className="h-full">
+                              <GmailWindow
+                                onClose={() => closeWindow(window.id)}
+                                onMinimize={() => minimizeWindow(window.id)}
+                                onMaximize={() => maximizeWindow(window.id)}
+                                isMaximized={window.isMaximized}
+                                initialCompose={window.initialCompose}
+                              />
+                            </div>
+                          </motion.div>
                         );
                       }
                     return null;
